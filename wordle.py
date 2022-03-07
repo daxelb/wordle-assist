@@ -3,7 +3,6 @@ from wordfreq import zipf_frequency
 
 ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
 
-
 class Wordle:
   def __init__(self):
     self.known = set()
@@ -41,12 +40,14 @@ class Wordle:
         continue
       score = 0
       for lett in word:
-        if lett not in freq or lett in self.must_include:
+        if lett not in freq:# or lett in self.must_include:
           continue
         score += freq[lett]
       word_scores[word] = score
-    for lett in sorted(word_scores, key=word_scores.get, reverse=True):
-      print(lett, word_scores[lett])
+    for i, word in enumerate(sorted(word_scores, key=word_scores.get, reverse=True)):
+      if i > 10:
+        break
+      print(word, word_scores[word])
 
   def guess_by_freq(self, lim):
     guesses = dict()
@@ -121,8 +122,8 @@ def get_score(guess, answer, i):
 
 if __name__ == "__main__":
   wordle = Wordle()
-  wordle.add_guess({'s': 2, 'a': 1, 'l': 0, 'e': 1, 't': 0})
-  wordle.add_guess({'h': 1, 'e': 1, 'a': 2, 'r': 0, 'd': 0})
+  wordle.add_guess({'c': 0, 'h': 1, 'e': 0, 'a': 1, 't': 0})
+  # wordle.add_guess({'p': 0, 'r': 1, 'e': 1, 's': 0, 't': 1})
   # wordle.add_guess({'l': 1, 'a': 2, 'u': 2, 'g': 0, 'h': 0})
   # wordle.print_guesses(0)
   wordle.good_guess()
