@@ -1,134 +1,156 @@
 from english_words import english_words_lower_alpha_set
 from wordfreq import zipf_frequency
+from enum import Enum
+from collections import Counter
 
-ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
+from itertools import product
+from tqdm import tqdm
+
+from functools import partial
+import multiprocessing as mp
+
+ALPHABET = "abcdefghijklmnopqrstuvwxyz"
+N = 5
+
 
 class Wordle:
-  def __init__(self):
-    self.known = set()
-    self.must_include = set()
-    self.word = [list(ALPHABET) for _ in range(5)]
+    def __init__(self, min_frequency=1):
+        self.cant_include = set()
+        self.known = set()
+        self.must_include = set()
+        self.letter_options = [list(ALPHABET) for _ in range(N)]
+        self.N_letter_words = get_N_letter_words_with_min_frequency(min_frequency)
 
-  def add_guess(self, guess):
-    for i, letter in enumerate(guess):
-      status = guess[letter]
-      if status == 0:
-        for word_letter in self.word:
-          if letter in word_letter:
-            word_letter.remove(letter)
-      if status == 1:
-        self.must_include.add(letter)
-        if letter in self.word[i]:
-          self.word[i].remove(letter)
-      if status == 2:
-        self.must_include.add(letter)
-        self.known.add(letter)
-        self.word[i] = [letter]
+    def add_guess(self, guess):
+        assert len(guess) == N, f"Guess '{guess}' must be of length {N}."
 
-  def good_guess(self, win=False):
-    freq = dict()
-    for word in self.guess_by_freq(0):
-      for letter in word:
-        if letter not in freq:
-          freq[letter] = 0
-        freq[letter] += 1
-    for lett in sorted(freq, key=freq.get, reverse=True):
-      print(lett, freq[lett])
-    word_scores = dict()
-    for word in get_flw():
-      if len(set(word)) != len(word):
-        continue
-      score = 0
-      for lett in word:
-        if lett not in freq:# or lett in self.must_include:
-          continue
-        score += freq[lett]
-      word_scores[word] = score
-    for i, word in enumerate(sorted(word_scores, key=word_scores.get, reverse=True)):
-      if i > 10:
-        break
-      print(word, word_scores[word])
+        for i, letter_status_tuple in enumerate(guess):
+            letter, status = letter_status_tuple
 
-  def guess_by_freq(self, lim):
-    guesses = dict()
-    for l0 in self.word[0]:
-      for l1 in self.word[1]:
-        for l2 in self.word[2]:
-          for l3 in self.word[3]:
-            for l4 in self.word[4]:
-              guess = [l0, l1, l2, l3, l4]
-              bad_guess = False
-              for e in self.must_include:
-                if e not in guess:
-                  bad_guess = True
-                  break
-              if not bad_guess:
-                guess = ''.join(guess)
-                if guess in english_words_lower_alpha_set:
-                  freq = zipf_frequency(guess, 'en')
-                  if freq > lim:
-                    guesses[guess] = freq
-    return guesses
+            if status == 0:
+                self.cant_include.add(letter)
+                for word_letter in self.letter_options:
+                    if letter in word_letter:
+                        word_letter.remove(letter)
 
-  def print_guesses(self, freq):
-    guesses = self.guess_by_freq(freq)
-    for guess in sorted(guesses, key=guesses.get, reverse=True):
-      print(guess, guesses[guess])
+            if status == 1:
+                self.must_include.add(letter)
+                if letter in self.letter_options[i]:
+                    self.letter_options[i].remove(letter)
+
+            if status == 2:
+                self.must_include.add(letter)
+                self.known.add(letter)
+                self.letter_options[i] = [letter]
+
+    def good_guess(self, win=False):
+        letter_frequency = Counter()
+
+        for word in self.guess_by_freq(0):
+            for letter in word:
+                letter_frequency[letter] += 1
+
+        for letter in sorted(letter_frequency, key=letter_frequency.get, reverse=True):
+            print(letter, letter_frequency[letter])
+
+        word_scores = dict()
+        for word in self.N_letter_words:
+            score = 0
+            for letter in set(word):
+                score += letter_frequency[letter]
+
+            word_scores[word] = score
+
+        for i, word in enumerate(
+            sorted(word_scores, key=word_scores.get, reverse=True)
+        ):
+            if i > 10:
+                break
+            print(word, word_scores[word])
+
+    def guess_by_freq(self, lim):
+        """
+        Returns guesses filtered by their Zipf frequency, above a specified limit.
+        """
+        guesses = {}
+        for word in self.N_letter_words:
+            if not self.is_valid_guess(word):
+                continue
+
+            # Otherwise, check the Zipf frequency of the word
+            freq = zipf_frequency(word, "en")
+            if freq > lim:
+                guesses[word] = freq
+
+        return guesses
+
+    def is_valid_guess(self, guess):
+        # Check if all must_include letters are in the word
+        if not self.must_include.issubset(set(guess)):
+            return False
+        # Check if word can be formed from self.letter_options
+        if not all(
+            letter in options for letter, options in zip(guess, self.letter_options)
+        ):
+            return False
+        return True
+
+    def print_guesses(self, freq):
+        guesses = self.guess_by_freq(freq)
+        for guess in sorted(guesses, key=guesses.get, reverse=True):
+            print(guess, guesses[guess])
 
 
-def get_flw():
-  """
-  Returns a set of five letter english words
-  """
-  return {word for word in english_words_lower_alpha_set if len(word) == 5}
+def get_N_letter_words(return_type=set):
+    """
+    Returns a set of five letter english words
+    """
+    assert return_type in (set, list)
+    res = [word for word in english_words_lower_alpha_set if len(word) == N]
+    if return_type == list:
+        return res
+    elif return_type == set:
+        return set(res)
+    else:
+        raise ValueError("return_type must be set or list")
 
 
-def get_freq_flw(freq):
-  return {word for word in get_flw() if zipf_frequency(word, 'en') > freq}
-
-
-def best_first_guess():
-  guess_scores = dict()
-  answers = get_freq_flw(4)
-  guesses = get_freq_flw(2)
-  for i, g in enumerate(guesses):
-    if 'x' in g or 'z' in g or 'q' in g or len(set(list(g))) < 5:
-      continue
-    score = 0
-    for j, a in enumerate(answers):
-      progress = 100*((i*len(answers) + j)/(len(guesses) * len(answers)))
-      print(f'{progress:2f}%', end='\r')
-      wordle = Wordle()
-      wordle.add_guess(make_guess(g, a))
-      score += len(wordle.guess_by_freq(4))
-    guess_scores[g] = score
-  return guess_scores
+def get_N_letter_words_with_min_frequency(min_frequency, return_type=set):
+    """
+    Returns five-letter English words with a Zipf frequency greater than `min_frequency`.
+    """
+    five_letter_words = get_N_letter_words(return_type=list)
+    res = [
+        word for word in five_letter_words if zipf_frequency(word, "en") > min_frequency
+    ]
+    if return_type == list:
+        return res
+    elif return_type == set:
+        return set(res)
+    else:
+        raise ValueError("return_type must be set or list")
 
 
 def make_guess(guess, answer):
-  word_score = dict()
-  for i in range(5):
-    word_score[guess[i]] = get_score(guess, answer, i)
-  return word_score
+    word_score = list()
+    for i in range(N):
 
+        if guess[i] == answer[i]:
+            score = 2
+        elif guess[i] in answer:
+            score = 1
+        else:
+            score = 0
 
-def get_score(guess, answer, i):
-  if guess[i] == answer[i]:
-    return 2
-  if guess[i] in answer:
-    return 1
-  return 0
+        word_score.append((guess[i], score))
+    return word_score
 
 
 if __name__ == "__main__":
-  wordle = Wordle()
-  wordle.add_guess({'c': 0, 'h': 1, 'e': 0, 'a': 1, 't': 0})
-  # wordle.add_guess({'p': 0, 'r': 1, 'e': 1, 's': 0, 't': 1})
-  # wordle.add_guess({'l': 1, 'a': 2, 'u': 2, 'g': 0, 'h': 0})
-  # wordle.print_guesses(0)
-  wordle.good_guess()
-  # print(make_guess('later', 'ultra'))
-  # g = best_first_guess()
-  # with open('wordle.txt', 'a') as f:
-  #   for guess in sorted(g, key=g.get):
-  #     f.write(guess, g[guess])
+    wordle = Wordle()
+    wordle.add_guess([("s", 0), ("n", 1), ("o", 2), ("r", 0), ("t", 0)])
+    wordle.add_guess([("a", 0), ("l", 2), ("o", 2), ("n", 2), ("e", 2)])
+    # wordle.add_guess({"a": 0, "l": 2, "o": 2, "n": 2, "e": 2})
+    wordle.print_guesses(0)
+    wordle.good_guess()
+    # print(make_guess('later', 'ultra'))
